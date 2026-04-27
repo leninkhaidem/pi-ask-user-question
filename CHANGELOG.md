@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2025-04-27
+
+### Fixed
+
+- Literal `\n` sequences displayed instead of actual newlines in context, question, and option text. LLMs sometimes double-escape newlines in JSON tool call arguments; the extension now normalizes these to real newlines before rendering.
+
 ## [0.1.1] - 2025-04-27
 
 ### Fixed
@@ -33,5 +39,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skill reference spec at `skills/ask-user/references/ask-user-skill-extension-spec.md`
 - `promptSnippet` and `promptGuidelines` for system prompt integration
 
+[0.1.2]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/leninkhaidem/pi-ask-user-question/releases/tag/v0.1.0

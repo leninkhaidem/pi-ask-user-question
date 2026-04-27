@@ -66,10 +66,19 @@ interface AskToolDetails {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/** Replace literal \n sequences (from LLM double-escaping) with actual newlines */
+function unescapeNewlines(text: string): string {
+   return text.replace(/\\n/g, "\n");
+}
+
 function normalizeOptions(raw: OptionInput[]): QuestionOption[] {
    return raw
       .map((o) => (typeof o === "string" ? { title: o } : o))
-      .filter((o): o is QuestionOption => !!o?.title);
+      .filter((o): o is QuestionOption => !!o?.title)
+      .map((o) => ({
+         title: unescapeNewlines(o.title),
+         description: o.description ? unescapeNewlines(o.description) : undefined,
+      }));
 }
 
 /** Strip "Type my own" variants from options when allowFreeform is on (the extension adds its own) */
@@ -509,9 +518,9 @@ export default function (pi: ExtensionAPI) {
             };
          }
 
+         const question = unescapeNewlines(params.question ?? "");
+         const context = params.context;
          const {
-            question,
-            context,
             options: rawOptions = [],
             allowMultiple = false,
             allowFreeform = true,
@@ -519,7 +528,7 @@ export default function (pi: ExtensionAPI) {
             timeout,
          } = params as AskParams;
          const options = deduplicateFreeform(normalizeOptions(rawOptions), allowFreeform);
-         const normalizedContext = context?.trim() || undefined;
+         const normalizedContext = context?.trim() ? unescapeNewlines(context.trim()) : undefined;
 
          // ── Non-interactive fallback ──
          if (!ctx.hasUI || !ctx.ui) {
