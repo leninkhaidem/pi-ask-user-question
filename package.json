@@ -1,6 +1,6 @@
 {
   "name": "pi-ask-user-question",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Clean, Claude Code-style ask_user tool for pi-coding-agent — bottom-anchored, markdown context, numbered options with cursor navigation",
   "type": "module",
   "keywords": [

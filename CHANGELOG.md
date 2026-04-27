@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2025-04-28
+
+### Added
+
+- Viewport-aware scrolling for the ask_user dialog. When content (question, context, options) exceeds the terminal height, the box now internally scrolls instead of overflowing.
+- Sticky header (`╭─ ask_user ─╮`) and footer (hints + `╰─╯`) remain visible while the content area scrolls.
+- Scroll indicators: `▲ N more lines above` / `▼ N more lines below` shown inside the border when content overflows.
+- Auto-scroll follows the selected option as you navigate with ↑↓ arrows.
+- Multiple scroll keybindings:
+  - **Ctrl+↑ / Ctrl+↓** — scroll one line at a time
+  - **Ctrl+U / Ctrl+D** — scroll half page (vim-style)
+  - **Page Up / Page Down** — scroll half page
+- Dynamic hints: footer shows `Ctrl+↑↓ scroll` when content overflows.
+- In freeform mode, viewport auto-scrolls to the bottom to keep the editor visible.
+
+### Fixed
+
+- Terminal flickering / rapid scrolling when the ask_user dialog was taller than the terminal (especially in narrow terminals or split panes). Output is now capped to terminal height.
+- Inability to see question and context in small terminal panes. Content is now scrollable with keyboard shortcuts.
+
 ## [0.1.2] - 2025-04-27
 
 ### Fixed
@@ -39,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skill reference spec at `skills/ask-user/references/ask-user-skill-extension-spec.md`
 - `promptSnippet` and `promptGuidelines` for system prompt integration
 
+[0.1.3]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/leninkhaidem/pi-ask-user-question/releases/tag/v0.1.0

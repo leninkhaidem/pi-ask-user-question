@@ -147,6 +147,8 @@ class AskComponent implements Component {
    private checked = new Set<number>();
    private editor: Editor;
    private editorDraft = "";
+   private scrollOffset = 0;
+   private optionLinePositions = new Map<number, number>();
 
    private cachedWidth?: number;
    private cachedLines?: string[];
@@ -235,6 +237,89 @@ class AskComponent implements Component {
       this.tui.requestRender();
    }
 
+   // ── Viewport scrolling ──
+
+   private ensureSelectedVisible(totalLines: number): void {
+      const maxHeight = Math.max(5, this.tui.terminal.rows - 1);
+      if (totalLines <= maxHeight) {
+         this.scrollOffset = 0;
+         return;
+      }
+
+      const headerCount = 1;
+      const footerCount = 3;
+      const scrollViewHeight = maxHeight - headerCount - footerCount;
+      const scrollableCount = totalLines - headerCount - footerCount;
+      const maxScroll = Math.max(0, scrollableCount - scrollViewHeight);
+
+      if (scrollViewHeight <= 2) return;
+
+      if (this.mode === "freeform") {
+         // In freeform mode, scroll to bottom to show editor
+         this.scrollOffset = maxScroll;
+         return;
+      }
+
+      const linePos = this.optionLinePositions.get(this.selectedIndex);
+      if (linePos === undefined) return;
+
+      const scrollPos = linePos - headerCount;
+
+      if (scrollPos < this.scrollOffset + 1) {
+         this.scrollOffset = Math.max(0, scrollPos - 1);
+      } else if (scrollPos >= this.scrollOffset + scrollViewHeight - 1) {
+         this.scrollOffset = Math.max(0, scrollPos - scrollViewHeight + 2);
+      }
+   }
+
+   private applyViewport(lines: string[], width: number): string[] {
+      const maxHeight = Math.max(5, this.tui.terminal.rows - 1);
+
+      if (lines.length <= maxHeight) {
+         this.scrollOffset = 0;
+         return lines;
+      }
+
+      const headerLines = lines.slice(0, 1);
+      const footerLines = lines.slice(-3);
+      const scrollableLines = lines.slice(1, -3);
+
+      const scrollViewHeight = maxHeight - headerLines.length - footerLines.length;
+
+      if (scrollViewHeight <= 0 || scrollableLines.length <= scrollViewHeight) {
+         return lines;
+      }
+
+      // Clamp scroll offset
+      const maxScroll = scrollableLines.length - scrollViewHeight;
+      this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, maxScroll));
+
+      // Extract visible window
+      const visibleContent = scrollableLines.slice(
+         this.scrollOffset,
+         this.scrollOffset + scrollViewHeight,
+      );
+
+      // Add scroll indicators (only when viewport is large enough)
+      const innerWidth = Math.max(1, width - BORDER_OVERHEAD);
+      const borderColor = (s: string) => this.theme.fg("accent", s);
+
+      if (scrollViewHeight >= 3) {
+         if (this.scrollOffset > 0) {
+            const aboveCount = this.scrollOffset;
+            const indicator = this.theme.fg("dim", `▲ ${aboveCount} more line${aboveCount !== 1 ? "s" : ""} above`);
+            visibleContent[0] = wrapInBorder(` ${indicator}`, innerWidth, borderColor);
+         }
+         if (this.scrollOffset + scrollViewHeight < scrollableLines.length) {
+            const belowCount = scrollableLines.length - this.scrollOffset - scrollViewHeight;
+            const indicator = this.theme.fg("dim", `▼ ${belowCount} more line${belowCount !== 1 ? "s" : ""} below`);
+            visibleContent[visibleContent.length - 1] = wrapInBorder(` ${indicator}`, innerWidth, borderColor);
+         }
+      }
+
+      return [...headerLines, ...visibleContent, ...footerLines];
+   }
+
    // ── Input handling ──
 
    handleInput(data: string): void {
@@ -267,6 +352,34 @@ class AskComponent implements Component {
       }
       if (matchesKey(data, Key.down) || matchesKey(data, Key.tab)) {
          this.selectedIndex = this.selectedIndex === count - 1 ? 0 : this.selectedIndex + 1;
+         this.invalidate();
+         this.tui.requestRender();
+         return;
+      }
+
+      // Scrolling: Page Up/Down (half page), Ctrl+Up/Down (line by line)
+      if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u"))) {
+         const pageSize = Math.max(1, Math.floor((this.tui.terminal.rows - 5) / 2));
+         this.scrollOffset = Math.max(0, this.scrollOffset - pageSize);
+         this.invalidate();
+         this.tui.requestRender();
+         return;
+      }
+      if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d"))) {
+         const pageSize = Math.max(1, Math.floor((this.tui.terminal.rows - 5) / 2));
+         this.scrollOffset += pageSize;
+         this.invalidate();
+         this.tui.requestRender();
+         return;
+      }
+      if (matchesKey(data, Key.ctrl("up"))) {
+         this.scrollOffset = Math.max(0, this.scrollOffset - 1);
+         this.invalidate();
+         this.tui.requestRender();
+         return;
+      }
+      if (matchesKey(data, Key.ctrl("down"))) {
+         this.scrollOffset += 1;
          this.invalidate();
          this.tui.requestRender();
          return;
@@ -382,7 +495,9 @@ class AskComponent implements Component {
          this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, count - 1));
       }
 
+      this.optionLinePositions.clear();
       for (let i = 0; i < this.options.length; i++) {
+         this.optionLinePositions.set(i, lines.length);
          const opt = this.options[i]!;
          const isSelected = i === this.selectedIndex;
          const pointer = isSelected ? theme.fg("accent", "❯") : " ";
@@ -415,6 +530,7 @@ class AskComponent implements Component {
       // ── Freeform option ──
       if (this.allowFreeform) {
          const freeIdx = this.options.length;
+         this.optionLinePositions.set(freeIdx, lines.length);
          const isSelected = freeIdx === this.selectedIndex;
          const pointer = isSelected ? theme.fg("accent", "❯") : " ";
          const num = `${freeIdx + 1}.`;
@@ -436,19 +552,27 @@ class AskComponent implements Component {
 
       // ── Hints ──
       lines.push(wrapInBorder("", innerWidth, borderColor));
+      // Detect if viewport scrolling is active (content will overflow)
+      const willOverflow = lines.length + 3 > Math.max(5, this.tui.terminal.rows - 1);
+      // +3 because hints + box bottom haven't been added yet
+      const scrollHint = willOverflow ? " · Ctrl+↑↓ scroll" : "";
       const hints = this.mode === "freeform"
          ? theme.fg("dim", "Enter to submit · Esc to go back")
          : this.allowMultiple
-            ? theme.fg("dim", "↑↓ to select · Space to toggle · Enter to confirm · Esc to cancel")
-            : theme.fg("dim", "↑↓ to select · Enter to confirm · Esc to cancel");
+            ? theme.fg("dim", `↑↓ select · Space toggle · Enter confirm · Esc cancel${scrollHint}`)
+            : theme.fg("dim", `↑↓ select · Enter confirm · Esc cancel${scrollHint}`);
       lines.push(wrapInBorder(` ${hints}`, innerWidth, borderColor));
 
       // ── Box bottom ──
       lines.push(renderBoxBottom(width, borderColor));
 
+      // ── Viewport scrolling ──
+      this.ensureSelectedVisible(lines.length);
+      const result = this.applyViewport(lines, width);
+
       this.cachedWidth = width;
-      this.cachedLines = lines;
-      return lines;
+      this.cachedLines = result;
+      return result;
    }
 }
 
