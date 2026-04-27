@@ -72,6 +72,12 @@ function normalizeOptions(raw: OptionInput[]): QuestionOption[] {
       .filter((o): o is QuestionOption => !!o?.title);
 }
 
+/** Strip "Type my own" variants from options when allowFreeform is on (the extension adds its own) */
+function deduplicateFreeform(options: QuestionOption[], allowFreeform: boolean): QuestionOption[] {
+   if (!allowFreeform) return options;
+   return options.filter((o) => !/^type\s+(my\s+own|something)\.?$/i.test(o.title.trim()));
+}
+
 function formatResponseSummary(r: AskResponse): string {
    if (r.kind === "freeform") return r.text;
    const sel = r.selections.join(", ");
@@ -512,7 +518,7 @@ export default function (pi: ExtensionAPI) {
             allowComment = false,
             timeout,
          } = params as AskParams;
-         const options = normalizeOptions(rawOptions);
+         const options = deduplicateFreeform(normalizeOptions(rawOptions), allowFreeform);
          const normalizedContext = context?.trim() || undefined;
 
          // ── Non-interactive fallback ──
