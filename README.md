@@ -42,13 +42,14 @@ A clean, Claude Code-style `ask_user` tool for [pi-coding-agent](https://github.
 ## Install
 
 ```bash
-pi install npm:pi-ask-user-question
+pi install git:github.com/leninkhaidem/pi-ask-user-question
 ```
 
 Or install from a local clone:
 
 ```bash
-pi install /path/to/pi-ask-user-question
+git clone https://github.com/leninkhaidem/pi-ask-user-question.git
+pi install ./pi-ask-user-question
 ```
 
 > **Note:** If you have `pi-ask-user` installed, uninstall it first to avoid tool name conflicts:
