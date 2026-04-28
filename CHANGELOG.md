@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-04-28
+
+### Added
+
+- **Context length validation** — `context` field is now validated against hard limits (16 lines / 1200 chars). Calls exceeding the limit return `isError: true` with a clear message instructing the agent to shorten the context and retry. No information is lost; the agent restructures where it places the explanation.
+- **Good vs bad `context` examples** in the `ask-user` skill — concrete side-by-side showing a decision-focused summary vs a dumped analysis, helping models understand what "brief" means.
+- **Explicit "visible response text" guidance** — all tool descriptions, prompt guidelines, and the skill now specify that explanations must appear in the visible assistant response text (not only in thinking/reasoning blocks) before calling `ask_user`.
+- **New anti-pattern** in skill: "Putting the explanation only in thinking/reasoning blocks — the user cannot read those."
+
+### Removed
+
+- **`timeout` parameter** — removed from the tool schema. `ask_user` now always waits indefinitely for user input. The `timeout` field in the internal interface is kept for backward compatibility but is ignored.
+
+### Changed
+
+- Tool `description` and `promptGuidelines` now include context length limits and explicit instructions to keep `context` brief.
+- Schema description for the `context` parameter updated with target/cap limits.
+- Skill step 3 ("Synthesize context") now explicitly states where the synthesis goes: visible response text for the explanation, `context` field for the brief decision-relevant summary.
+
 ## [0.1.3] - 2025-04-28
 
 ### Added
@@ -59,6 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skill reference spec at `skills/ask-user/references/ask-user-skill-extension-spec.md`
 - `promptSnippet` and `promptGuidelines` for system prompt integration
 
+[0.1.4]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.0...v0.1.1

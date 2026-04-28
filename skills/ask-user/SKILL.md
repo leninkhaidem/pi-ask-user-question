@@ -47,13 +47,39 @@ Prepare a short neutral summary (3-7 bullets or short paragraph) covering:
 - trade-offs
 - recommendation (if any)
 
+**Where it goes:** Present this synthesis in your **visible assistant response text** (the text the user actually reads in the chat — NOT in your internal thinking/reasoning blocks). Then distill the most decision-relevant points into the `context` field of `ask_user` (≤6 lines / ≤600 chars target).
+
+The visible response is where you explain; the panel is where the user decides. If the user only sees your thinking blocks but no readable summary, the decision has no basis.
+
 ### 4) Ask one focused question
 Call `ask_user` with one decision at a time:
 - `question`: concrete decision prompt
-- `context`: synthesized summary
+- `context`: **brief** distilled summary — target ≤6 lines / ≤600 chars (hard cap ~16 lines / 1200 chars; calls exceeding it are rejected with an error). The panel is bottom-anchored; a tall `context` overflows the terminal and locks scrolling.
 - `options`: 2-5 clear choices when possible
 - `allowMultiple`: `false` unless independent selections are genuinely needed
 - `allowFreeform`: usually `true`
+
+**Long explanations belong in the visible assistant response text immediately BEFORE the `ask_user` call, not inside `context` and not only in thinking/reasoning blocks.** Use `context` only for the short summary the user needs to see next to the options to make the decision.
+
+#### Good vs bad `context` examples
+
+**Good** (≤6 lines, decision-focused):
+```
+Two migration strategies available:
+• Blue-green: zero downtime, 2× infra cost during cutover
+• Rolling: ~30s blips per pod, no extra infra
+Current SLA: 99.9% uptime. Peak traffic window: 2–4 AM UTC.
+```
+
+**Bad** (full analysis dumped into context):
+```
+I analyzed the deployment pipeline across 12 files. The current Helm chart
+uses strategy: RollingUpdate with maxSurge=1 and maxUnavailable=0. The
+service mesh has circuit breakers configured with a 5s timeout and 3 retries.
+I also found that the health check endpoint returns...
+[...800 more chars of findings...]
+```
+→ This belongs in the chat message. Only the decision-relevant summary goes into `context`.
 
 ### 5) Commit the decision
 After response:
@@ -109,6 +135,8 @@ Good options include a short description when trade-offs are non-obvious.
 ## Anti-patterns
 
 - Asking `ask_user` without first gathering context
+- **Stuffing long explanations, code blocks, or full reasoning into `context`** — write the explanation in your visible response text before the call; keep `context` short
+- **Putting the explanation only in thinking/reasoning blocks** — the user cannot read those; the synthesis must be in the visible response text
 - Using it for trivial formatting choices
 - Forcing options when freeform is clearly better
 - Asking the same question repeatedly without new information

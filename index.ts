@@ -49,7 +49,7 @@ interface AskParams {
    allowMultiple?: boolean;
    allowFreeform?: boolean;
    allowComment?: boolean;
-   timeout?: number;
+   timeout?: number; // deprecated — kept for backward compat but ignored
 }
 
 type AskResponse =
@@ -69,6 +69,37 @@ interface AskToolDetails {
 /** Replace literal \n sequences (from LLM double-escaping) with actual newlines */
 function unescapeNewlines(text: string): string {
    return text.replace(/\\n/g, "\n");
+}
+
+/**
+ * Hard limits on the context string so the panel cannot grow tall enough to
+ * exceed the terminal viewport (which causes scroll-lock on some terminals).
+ * The calling agent should put long explanations in the chat message preceding
+ * the ask_user call — `context` is meant to be a brief focused summary.
+ *
+ * Instead of silently truncating (which loses information), we validate and
+ * return an error string so the agent can retry with a shorter context.
+ */
+const CONTEXT_MAX_CHARS = 1200;
+const CONTEXT_MAX_LINES = 16;
+
+/** Returns an error message if context exceeds limits, or null if OK. */
+function validateContext(text: string): string | null {
+   const lineCount = text.split("\n").length;
+   const charCount = text.length;
+   const violations: string[] = [];
+   if (lineCount > CONTEXT_MAX_LINES) {
+      violations.push(`${lineCount} lines (max ${CONTEXT_MAX_LINES})`);
+   }
+   if (charCount > CONTEXT_MAX_CHARS) {
+      violations.push(`${charCount} chars (max ${CONTEXT_MAX_CHARS})`);
+   }
+   if (violations.length === 0) return null;
+   return (
+      `context is too long: ${violations.join(", ")}. ` +
+      `Put the detailed explanation in your chat message BEFORE calling ask_user, ` +
+      `then pass only a brief ≤6-line / ≤600-char summary in context. Retry with a shorter context.`
+   );
 }
 
 function normalizeOptions(raw: OptionInput[]): QuestionOption[] {
@@ -583,11 +614,13 @@ export default function (pi: ExtensionAPI) {
       name: "ask_user",
       label: "Ask User",
       description:
-         "Ask the user a question with optional multiple-choice answers. Use this to gather information interactively. Ask exactly one focused question per call. Before calling, gather context with tools (read/web/ref) and pass a short summary via the context field.",
+         "Ask the user a question with optional multiple-choice answers. Use this to gather information interactively. Ask exactly one focused question per call. Before calling, gather context with tools (read/web/ref) and write a visible explanation in your response text. Then pass a SHORT focused summary via the context field (target ≤6 lines / ≤600 chars; hard cap ~16 lines / 1200 chars). Long explanations, findings, or reasoning MUST appear in your visible response text (not only in thinking blocks) immediately before this call — NOT inside `context`. The panel is bottom-anchored and a tall `context` will overflow the terminal and lock scrolling.",
       promptSnippet:
          "Ask the user one focused question with optional multiple-choice answers to gather information interactively",
       promptGuidelines: [
          "Before calling ask_user, gather context with tools (read/web/ref) and pass a short summary via the context field.",
+         "Keep `context` to a brief focused summary: target ≤6 lines / ≤600 chars. The hard cap is ~16 lines / 1200 chars — calls exceeding it are rejected with an error; retry with shorter context.",
+         "Put long explanations, findings, trade-off discussions, or reasoning in your visible response text (the text the user reads in the chat) BEFORE calling ask_user — not only in thinking/reasoning blocks and not inside the `context` parameter. The panel is for the decision, not for the explanation.",
          "Use ask_user when the user's intent is ambiguous, when a decision requires explicit user input, or when multiple valid options exist.",
          "Ask exactly one focused question per ask_user call.",
          "Do not combine multiple numbered, multipart, or unrelated questions into one ask_user prompt.",
@@ -595,7 +628,10 @@ export default function (pi: ExtensionAPI) {
       parameters: Type.Object({
          question: Type.String({ description: "The question to ask the user" }),
          context: Type.Optional(
-            Type.String({ description: "Relevant context to show before the question (summary of findings)" }),
+            Type.String({
+               description:
+                  "Brief focused summary shown above the options (target ≤6 lines / ≤600 chars; hard cap ~16 lines / 1200 chars — calls exceeding it are rejected with an error). Put long explanations in the chat message BEFORE this call, not here.",
+            }),
          ),
          options: Type.Optional(
             Type.Array(
@@ -622,11 +658,7 @@ export default function (pi: ExtensionAPI) {
                description: "Collect an optional comment after selecting one or more options. Default: false",
             }),
          ),
-         timeout: Type.Optional(
-            Type.Number({
-               description: "Auto-dismiss after N milliseconds. Returns null (cancelled) when expired.",
-            }),
-         ),
+         // timeout parameter removed — ask_user waits indefinitely
       }),
 
       async execute(_toolCallId, params, signal, onUpdate, ctx) {
@@ -649,10 +681,30 @@ export default function (pi: ExtensionAPI) {
             allowMultiple = false,
             allowFreeform = true,
             allowComment = false,
-            timeout,
          } = params as AskParams;
+         // timeout parameter accepted for backward compat but intentionally ignored — ask_user always waits indefinitely
          const options = deduplicateFreeform(normalizeOptions(rawOptions), allowFreeform);
-         const normalizedContext = context?.trim() ? unescapeNewlines(context.trim()) : undefined;
+         const normalizedContext = context?.trim()
+            ? unescapeNewlines(context.trim())
+            : undefined;
+
+         // ── Validate context length ──
+         if (normalizedContext) {
+            const contextError = validateContext(normalizedContext);
+            if (contextError) {
+               return {
+                  content: [{ type: "text", text: contextError }],
+                  isError: true,
+                  details: {
+                     question,
+                     context: normalizedContext,
+                     options,
+                     response: null,
+                     cancelled: false,
+                  } as AskToolDetails,
+               };
+            }
+         }
 
          // ── Non-interactive fallback ──
          if (!ctx.hasUI || !ctx.ui) {
@@ -680,7 +732,7 @@ export default function (pi: ExtensionAPI) {
          // ── No options → direct text input ──
          if (options.length === 0) {
             const prompt = normalizedContext ? `${question}\n\nContext:\n${normalizedContext}` : question;
-            const answer = await ctx.ui.input(prompt, "Type your answer...", timeout ? { timeout } : undefined);
+            const answer = await ctx.ui.input(prompt, "Type your answer...");
             const trimmed = answer?.trim();
             if (!trimmed) {
                return {
@@ -722,10 +774,7 @@ export default function (pi: ExtensionAPI) {
                   if (signal) {
                      signal.addEventListener("abort", () => done(null), { once: true });
                   }
-                  // Wire up timeout
-                  if (timeout && timeout > 0) {
-                     setTimeout(() => done(null), timeout);
-                  }
+                  // timeout disabled — ask_user waits indefinitely
 
                   return new AskComponent(
                      question,
@@ -750,13 +799,13 @@ export default function (pi: ExtensionAPI) {
                const selectOptions = options.map((o) => o.title);
                if (allowFreeform) selectOptions.push("Type my own");
                const prompt = normalizedContext ? `${question}\n\nContext:\n${normalizedContext}` : question;
-               const selected = (await ctx.ui.select(prompt, selectOptions, timeout ? { timeout } : undefined)) as
+               const selected = (await ctx.ui.select(prompt, selectOptions)) as
                   | string
                   | undefined;
                if (!selected) {
                   result = null;
                } else if (selected === "Type my own") {
-                  const answer = await ctx.ui.input(prompt, "Type your answer...", timeout ? { timeout } : undefined);
+                  const answer = await ctx.ui.input(prompt, "Type your answer...");
                   const trimmed = answer?.trim();
                   result = trimmed ? { kind: "freeform", text: trimmed } : null;
                } else {
