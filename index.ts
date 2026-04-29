@@ -203,6 +203,7 @@ class AskComponent implements Component {
       theme: Theme,
       keybindings: KeybindingsManager,
       done: (result: AskResponse | null) => void,
+      initialMode: Mode = "select",
    ) {
       this.question = question;
       this.context = context;
@@ -231,10 +232,22 @@ class AskComponent implements Component {
          if (trimmed) {
             this.done({ kind: "freeform", text: trimmed });
          } else {
-            // Empty submit → go back to select mode
-            this.switchToSelect();
+            // Empty submit → go back to select mode (or cancel if no options)
+            if (this.options.length === 0 && !this.allowFreeform) {
+               this.done(null);
+            } else if (this.options.length === 0) {
+               // No options to go back to — stay in freeform
+            } else {
+               this.switchToSelect();
+            }
          }
       };
+
+      // Start in freeform mode if requested
+      if (initialMode === "freeform") {
+         this.mode = "freeform";
+         (this.editor as any).focused = this._focused;
+      }
    }
 
    // ── Item count helpers ──
@@ -459,7 +472,12 @@ class AskComponent implements Component {
 
    private handleFreeformInput(data: string): void {
       if (matchesKey(data, Key.escape)) {
-         this.switchToSelect();
+         // If there are no options to go back to, cancel entirely
+         if (this.options.length === 0) {
+            this.done(null);
+         } else {
+            this.switchToSelect();
+         }
          return;
       }
       this.editor.handleInput(data);
@@ -588,7 +606,9 @@ class AskComponent implements Component {
       // +3 because hints + box bottom haven't been added yet
       const scrollHint = willOverflow ? " · Ctrl+↑↓ scroll" : "";
       const hints = this.mode === "freeform"
-         ? theme.fg("dim", "Enter to submit · Esc to go back")
+         ? this.options.length === 0
+            ? theme.fg("dim", "Enter to submit · Esc to cancel")
+            : theme.fg("dim", "Enter to submit · Esc to go back")
          : this.allowMultiple
             ? theme.fg("dim", `↑↓ select · Space toggle · Enter confirm · Esc cancel${scrollHint}`)
             : theme.fg("dim", `↑↓ select · Enter confirm · Esc cancel${scrollHint}`);
@@ -729,35 +749,8 @@ export default function (pi: ExtensionAPI) {
             };
          }
 
-         // ── No options → direct text input ──
-         if (options.length === 0) {
-            const prompt = normalizedContext ? `${question}\n\nContext:\n${normalizedContext}` : question;
-            const answer = await ctx.ui.input(prompt, "Type your answer...");
-            const trimmed = answer?.trim();
-            if (!trimmed) {
-               return {
-                  content: [{ type: "text", text: "User cancelled the question" }],
-                  details: {
-                     question,
-                     context: normalizedContext,
-                     options,
-                     response: null,
-                     cancelled: true,
-                  } as AskToolDetails,
-               };
-            }
-            const response: AskResponse = { kind: "freeform", text: trimmed };
-            return {
-               content: [{ type: "text", text: `User answered: ${trimmed}` }],
-               details: {
-                  question,
-                  context: normalizedContext,
-                  options,
-                  response,
-                  cancelled: false,
-               } as AskToolDetails,
-            };
-         }
+         // ── No options → freeform editor directly (multi-line capable) ──
+         // Falls through to the custom UI path below with initialMode="freeform"
 
          // ── Streaming progress ──
          onUpdate?.({
@@ -776,6 +769,8 @@ export default function (pi: ExtensionAPI) {
                   }
                   // timeout disabled — ask_user waits indefinitely
 
+                  // When no options, start directly in freeform mode
+                  const initialMode: Mode = options.length === 0 ? "freeform" : "select";
                   return new AskComponent(
                      question,
                      normalizedContext,
@@ -787,6 +782,7 @@ export default function (pi: ExtensionAPI) {
                      theme,
                      keybindings,
                      done,
+                     initialMode,
                   );
                },
                // No overlay — replaces editor, sits at bottom
@@ -796,20 +792,30 @@ export default function (pi: ExtensionAPI) {
                result = customResult;
             } else {
                // RPC/headless fallback — use basic dialog
-               const selectOptions = options.map((o) => o.title);
-               if (allowFreeform) selectOptions.push("Type my own");
                const prompt = normalizedContext ? `${question}\n\nContext:\n${normalizedContext}` : question;
-               const selected = (await ctx.ui.select(prompt, selectOptions)) as
-                  | string
-                  | undefined;
-               if (!selected) {
-                  result = null;
-               } else if (selected === "Type my own") {
+               if (options.length === 0 && allowFreeform) {
+                  // No options, freeform only — direct text input (single-line limitation in headless mode)
                   const answer = await ctx.ui.input(prompt, "Type your answer...");
                   const trimmed = answer?.trim();
                   result = trimmed ? { kind: "freeform", text: trimmed } : null;
+               } else if (options.length === 0) {
+                  // No options and no freeform — nothing to show
+                  result = null;
                } else {
-                  result = { kind: "selection", selections: [selected] };
+                  const selectOptions = options.map((o) => o.title);
+                  if (allowFreeform) selectOptions.push("Type my own");
+                  const selected = (await ctx.ui.select(prompt, selectOptions)) as
+                     | string
+                     | undefined;
+                  if (!selected) {
+                     result = null;
+                  } else if (selected === "Type my own") {
+                     const answer = await ctx.ui.input(prompt, "Type your answer...");
+                     const trimmed = answer?.trim();
+                     result = trimmed ? { kind: "freeform", text: trimmed } : null;
+                  } else {
+                     result = { kind: "selection", selections: [selected] };
+                  }
                }
             }
          } catch (error) {

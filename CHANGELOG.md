@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-04-29
+
+### Fixed
+
+- **Multi-line input for no-options path** — When `ask_user` is called without options (freeform-only), the tool previously used a single-line `ctx.ui.input()` dialog that couldn't handle pasted multi-line text. It now routes through the full `AskComponent` with the multi-line `Editor`, starting directly in freeform mode.
+
+### Changed
+
+- `AskComponent` accepts an `initialMode` parameter (`"select"` | `"freeform"`). Defaults to `"select"` for backward compatibility; set to `"freeform"` for the no-options path.
+- Esc in freeform mode with no options now cancels entirely (instead of trying to switch to a nonexistent selection list).
+- Hint text in no-options freeform mode shows "Enter to submit · Esc to cancel" instead of "Esc to go back".
+- RPC/headless fallback properly guards the no-options case to avoid calling `ctx.ui.select()` with an empty array.
+
 ## [0.1.4] - 2026-04-28
 
 ### Added
@@ -78,6 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skill reference spec at `skills/ask-user/references/ask-user-skill-extension-spec.md`
 - `promptSnippet` and `promptGuidelines` for system prompt integration
 
+[0.1.5]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.1...v0.1.2
