@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Freeform input is now always enabled and `allowFreeform` has been removed from the public tool schema.
+- Legacy/resumed calls that still contain `allowFreeform` have that argument stripped before execution.
+- `Type my own` is treated as a UI action row that opens the inline editor, not as a selectable answer.
+- User-supplied `Type my own` / `Type something` options are always stripped so they cannot be returned as `selection` values.
+
 ## [0.1.5] - 2026-04-29
 
 ### Fixed
@@ -91,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skill reference spec at `skills/ask-user/references/ask-user-skill-extension-spec.md`
 - `promptSnippet` and `promptGuidelines` for system prompt integration
 
+[Unreleased]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.5...HEAD
 [0.1.5]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/leninkhaidem/pi-ask-user-question/compare/v0.1.2...v0.1.3
