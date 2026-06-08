@@ -61,8 +61,7 @@ Use this protocol whenever the trigger matrix says to ask.
     { "title": "Path A (ship fast)", "description": "Lowest scope, revisit architecture later" },
     { "title": "Path B (extensible)", "description": "Higher initial effort, cleaner long-term composition" }
   ],
-  "allowMultiple": false,
-  "allowFreeform": true
+  "allowMultiple": false
 }
 ```
 
@@ -77,7 +76,6 @@ Use this protocol whenever the trigger matrix says to ask.
     "UI redesign first",
     "Do a minimal pass on both"
   ],
-  "allowMultiple": false,
-  "allowFreeform": true
+  "allowMultiple": false
 }
 ```

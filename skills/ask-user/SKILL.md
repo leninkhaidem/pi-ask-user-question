@@ -57,7 +57,6 @@ Call `ask_user` with one decision at a time:
 - `context`: **brief** distilled summary — target ≤6 lines / ≤600 chars (hard cap ~16 lines / 1200 chars; calls exceeding it are rejected with an error). The panel is bottom-anchored; a tall `context` overflows the terminal and locks scrolling.
 - `options`: 2-5 clear choices when possible
 - `allowMultiple`: `false` unless independent selections are genuinely needed
-- `allowFreeform`: usually `true`
 
 **Long explanations belong in the visible assistant response text immediately BEFORE the `ask_user` call, not inside `context` and not only in thinking/reasoning blocks.** Use `context` only for the short summary the user needs to see next to the options to make the decision.
 

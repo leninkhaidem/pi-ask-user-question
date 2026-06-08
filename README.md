@@ -21,9 +21,9 @@ A clean, Claude Code-style `ask_user` tool for [pi-coding-agent](https://github.
 │       Simpler rollout, weaker horizontal consistency         │
 │    2. Redis cache                                            │
 │       Better consistency and scalability, more ops overhead   │
-│  ❯ 3. Type my own                                            │
+│  ❯ ↳ Type my own                                             │
 │                                                              │
-│  ↑↓ to select · Enter to confirm · Esc to cancel             │
+│  Enter to type your own · Esc cancel                         │
 ╰──────────────────────────────────────────────────────────────╯
 ```
 
@@ -32,11 +32,10 @@ A clean, Claude Code-style `ask_user` tool for [pi-coding-agent](https://github.
 - **Bottom-anchored** — replaces the input editor, no floating overlay
 - **Markdown context** — renders the context block with full markdown support (code blocks, bold, lists, etc.)
 - **`❯` cursor navigation** — clean numbered options with arrow key selection
-- **Freeform input** — "Type my own" option opens an inline editor
+- **Freeform input** — always available; "Type my own" is an action that opens an inline editor, never a returned selection
 - **Multi-select** — optional checkbox-style selection with `Space` to toggle
 - **Custom rendering** — styled tool call and result display in the conversation
 - **RPC/headless fallback** — degrades gracefully to `select()`/`input()` dialogs
-- **Timeout support** — auto-dismiss after N milliseconds
 - **Bundled skill** — decision-gating skill for high-stakes and ambiguous choices
 
 ## Install
@@ -71,9 +70,8 @@ ask_user
 | `context` | `string?` | — | Relevant context (rendered as markdown) |
 | `options` | `(string \| {title, description?})[]?` | `[]` | Multiple-choice options |
 | `allowMultiple` | `boolean?` | `false` | Enable multi-select mode |
-| `allowFreeform` | `boolean?` | `true` | Add a "Type my own" freeform option |
 | `allowComment` | `boolean?` | `false` | Reserved for optional comment collection |
-| `timeout` | `number?` | — | Auto-dismiss after N ms, returns null |
+| `timeout` | `number?` | ignored | Deprecated; `ask_user` waits indefinitely |
 
 ## Example usage
 
@@ -84,8 +82,7 @@ ask_user
   "options": [
     { "title": "Staging first", "description": "Lower risk, validate before production" },
     { "title": "Direct to production", "description": "Faster but riskier" }
-  ],
-  "allowFreeform": true
+  ]
 }
 ```
 
@@ -106,6 +103,8 @@ interface AskToolDetails {
   cancelled: boolean;
 }
 ```
+
+`Type my own` is only a UI action for opening freeform input. It is stripped from supplied options and is never returned as `selections: ["Type my own"]`.
 
 ## Bundled skill
 

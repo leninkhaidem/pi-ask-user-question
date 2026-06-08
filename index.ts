@@ -9,9 +9,9 @@
  *   │  ───────────────────────────────────────────────────── │
  *   │    1. Option one                                        │
  *   │    2. Option two                                        │
- *   │  ❯ 3. Type my own                                      │
+ *   │  ❯ ↳ Type my own                                      │
  *   │                                                         │
- *   │  ↑↓ to select · Enter to confirm · Esc to cancel       │
+ *   │  ↑↓ select · Enter confirm/type · Esc cancel          │
  *   ╰─────────────────────────────────────────────────────────╯
  */
 
@@ -47,7 +47,6 @@ interface AskParams {
    context?: string;
    options?: OptionInput[];
    allowMultiple?: boolean;
-   allowFreeform?: boolean;
    allowComment?: boolean;
    timeout?: number; // deprecated — kept for backward compat but ignored
 }
@@ -82,6 +81,7 @@ function unescapeNewlines(text: string): string {
  */
 const CONTEXT_MAX_CHARS = 1200;
 const CONTEXT_MAX_LINES = 16;
+const FREEFORM_ACTION_LABEL = "Type my own";
 
 /** Returns an error message if context exceeds limits, or null if OK. */
 function validateContext(text: string): string | null {
@@ -112,9 +112,8 @@ function normalizeOptions(raw: OptionInput[]): QuestionOption[] {
       }));
 }
 
-/** Strip "Type my own" variants from options when allowFreeform is on (the extension adds its own) */
-function deduplicateFreeform(options: QuestionOption[], allowFreeform: boolean): QuestionOption[] {
-   if (!allowFreeform) return options;
+/** Strip freeform action labels from user-supplied options; the UI always adds its own action row. */
+function deduplicateFreeform(options: QuestionOption[]): QuestionOption[] {
    return options.filter((o) => !/^type\s+(my\s+own|something)\.?$/i.test(o.title.trim()));
 }
 
@@ -165,7 +164,6 @@ class AskComponent implements Component {
    private question: string;
    private context?: string;
    private options: QuestionOption[];
-   private allowFreeform: boolean;
    private allowMultiple: boolean;
    private allowComment: boolean;
    private tui: TUI;
@@ -196,7 +194,6 @@ class AskComponent implements Component {
       question: string,
       context: string | undefined,
       options: QuestionOption[],
-      allowFreeform: boolean,
       allowMultiple: boolean,
       allowComment: boolean,
       tui: TUI,
@@ -208,7 +205,6 @@ class AskComponent implements Component {
       this.question = question;
       this.context = context;
       this.options = options;
-      this.allowFreeform = allowFreeform;
       this.allowMultiple = allowMultiple;
       this.allowComment = allowComment;
       this.tui = tui;
@@ -232,10 +228,8 @@ class AskComponent implements Component {
          if (trimmed) {
             this.done({ kind: "freeform", text: trimmed });
          } else {
-            // Empty submit → go back to select mode (or cancel if no options)
-            if (this.options.length === 0 && !this.allowFreeform) {
-               this.done(null);
-            } else if (this.options.length === 0) {
+            // Empty submit → go back to select mode (or stay in freeform if no options)
+            if (this.options.length === 0) {
                // No options to go back to — stay in freeform
             } else {
                this.switchToSelect();
@@ -253,11 +247,11 @@ class AskComponent implements Component {
    // ── Item count helpers ──
 
    private get totalItems(): number {
-      return this.options.length + (this.allowFreeform ? 1 : 0);
+      return this.options.length + 1;
    }
 
    private isFreeformRow(index: number): boolean {
-      return this.allowFreeform && index === this.options.length;
+      return index === this.options.length;
    }
 
    // ── Mode switching ──
@@ -576,18 +570,15 @@ class AskComponent implements Component {
          }
       }
 
-      // ── Freeform option ──
-      if (this.allowFreeform) {
-         const freeIdx = this.options.length;
-         this.optionLinePositions.set(freeIdx, lines.length);
-         const isSelected = freeIdx === this.selectedIndex;
-         const pointer = isSelected ? theme.fg("accent", "❯") : " ";
-         const num = `${freeIdx + 1}.`;
-         const label = isSelected
-            ? theme.fg("accent", theme.bold("Type my own"))
-            : theme.fg("text", "Type my own");
-         lines.push(wrapInBorder(`${pointer} ${theme.fg("dim", num)} ${label}`, innerWidth, borderColor));
-      }
+      // ── Freeform action row (not a selectable answer) ──
+      const freeIdx = this.options.length;
+      this.optionLinePositions.set(freeIdx, lines.length);
+      const isFreeformSelected = freeIdx === this.selectedIndex;
+      const freeformPointer = isFreeformSelected ? theme.fg("accent", "❯") : " ";
+      const freeformLabel = isFreeformSelected
+         ? theme.fg("accent", theme.bold(FREEFORM_ACTION_LABEL))
+         : theme.fg("text", FREEFORM_ACTION_LABEL);
+      lines.push(wrapInBorder(`${freeformPointer} ${theme.fg("dim", "↳")} ${freeformLabel}`, innerWidth, borderColor));
 
       // ── Freeform editor (when in freeform mode) ──
       if (this.mode === "freeform") {
@@ -605,13 +596,16 @@ class AskComponent implements Component {
       const willOverflow = lines.length + 3 > Math.max(5, this.tui.terminal.rows - 1);
       // +3 because hints + box bottom haven't been added yet
       const scrollHint = willOverflow ? " · Ctrl+↑↓ scroll" : "";
+      const selectingFreeformAction = this.mode === "select" && this.isFreeformRow(this.selectedIndex);
       const hints = this.mode === "freeform"
          ? this.options.length === 0
             ? theme.fg("dim", "Enter to submit · Esc to cancel")
             : theme.fg("dim", "Enter to submit · Esc to go back")
-         : this.allowMultiple
-            ? theme.fg("dim", `↑↓ select · Space toggle · Enter confirm · Esc cancel${scrollHint}`)
-            : theme.fg("dim", `↑↓ select · Enter confirm · Esc cancel${scrollHint}`);
+         : selectingFreeformAction
+            ? theme.fg("dim", `Enter to type your own · Esc cancel${scrollHint}`)
+            : this.allowMultiple
+               ? theme.fg("dim", `↑↓ select · Space toggle · Enter confirm · Esc cancel${scrollHint}`)
+               : theme.fg("dim", `↑↓ select · Enter confirm · Esc cancel${scrollHint}`);
       lines.push(wrapInBorder(` ${hints}`, innerWidth, borderColor));
 
       // ── Box bottom ──
@@ -670,9 +664,6 @@ export default function (pi: ExtensionAPI) {
          allowMultiple: Type.Optional(
             Type.Boolean({ description: "Allow selecting multiple options. Default: false" }),
          ),
-         allowFreeform: Type.Optional(
-            Type.Boolean({ description: "Add a freeform text option. Default: true" }),
-         ),
          allowComment: Type.Optional(
             Type.Boolean({
                description: "Collect an optional comment after selecting one or more options. Default: false",
@@ -680,6 +671,12 @@ export default function (pi: ExtensionAPI) {
          ),
          // timeout parameter removed — ask_user waits indefinitely
       }),
+
+      prepareArguments(args) {
+         if (!args || typeof args !== "object" || Array.isArray(args)) return args;
+         const { allowFreeform: _ignored, ...rest } = args as Record<string, unknown>;
+         return rest;
+      },
 
       async execute(_toolCallId, params, signal, onUpdate, ctx) {
          if (signal?.aborted) {
@@ -699,11 +696,11 @@ export default function (pi: ExtensionAPI) {
          const {
             options: rawOptions = [],
             allowMultiple = false,
-            allowFreeform = true,
             allowComment = false,
          } = params as AskParams;
-         // timeout parameter accepted for backward compat but intentionally ignored — ask_user always waits indefinitely
-         const options = deduplicateFreeform(normalizeOptions(rawOptions), allowFreeform);
+         // timeout is accepted for backward compat but intentionally ignored — ask_user always waits indefinitely.
+         // allowFreeform is stripped in prepareArguments; freeform input is always enabled.
+         const options = deduplicateFreeform(normalizeOptions(rawOptions));
          const normalizedContext = context?.trim()
             ? unescapeNewlines(context.trim())
             : undefined;
@@ -729,7 +726,7 @@ export default function (pi: ExtensionAPI) {
          // ── Non-interactive fallback ──
          if (!ctx.hasUI || !ctx.ui) {
             const optionText = options.length > 0 ? `\n\nOptions:\n${formatOptionsForPlainText(options)}` : "";
-            const freeformHint = allowFreeform ? "\n\nYou can also answer freely." : "";
+            const freeformHint = "\n\nYou can also answer freely.";
             const contextText = normalizedContext ? `\n\nContext:\n${normalizedContext}` : "";
             return {
                content: [
@@ -775,7 +772,6 @@ export default function (pi: ExtensionAPI) {
                      question,
                      normalizedContext,
                      options,
-                     allowFreeform,
                      allowMultiple,
                      allowComment,
                      tui,
@@ -793,23 +789,19 @@ export default function (pi: ExtensionAPI) {
             } else {
                // RPC/headless fallback — use basic dialog
                const prompt = normalizedContext ? `${question}\n\nContext:\n${normalizedContext}` : question;
-               if (options.length === 0 && allowFreeform) {
+               if (options.length === 0) {
                   // No options, freeform only — direct text input (single-line limitation in headless mode)
                   const answer = await ctx.ui.input(prompt, "Type your answer...");
                   const trimmed = answer?.trim();
                   result = trimmed ? { kind: "freeform", text: trimmed } : null;
-               } else if (options.length === 0) {
-                  // No options and no freeform — nothing to show
-                  result = null;
                } else {
-                  const selectOptions = options.map((o) => o.title);
-                  if (allowFreeform) selectOptions.push("Type my own");
+                  const selectOptions = [...options.map((o) => o.title), FREEFORM_ACTION_LABEL];
                   const selected = (await ctx.ui.select(prompt, selectOptions)) as
                      | string
                      | undefined;
                   if (!selected) {
                      result = null;
-                  } else if (selected === "Type my own") {
+                  } else if (selected === FREEFORM_ACTION_LABEL) {
                      const answer = await ctx.ui.input(prompt, "Type your answer...");
                      const trimmed = answer?.trim();
                      result = trimmed ? { kind: "freeform", text: trimmed } : null;
