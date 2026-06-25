@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Added optional `recommended: true` support to ask_user options and renderers.
+- Inline `[recommended]` markers now appear in the UI, fallback text, and expanded results.
+- Tool guidance and bundled skill/docs now recommend 2–5 finite options and one inline recommendation flag.
+
 ## [0.2.0] - 2026-06-08
 
 ### Changed

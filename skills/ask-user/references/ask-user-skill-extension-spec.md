@@ -53,12 +53,14 @@ Use this protocol whenever the trigger matrix says to ask.
 
 ### Architecture decision
 
+Option objects may include `recommended: true` to flag one suggested choice inline.
+
 ```json
 {
   "question": "Which implementation path should we use for v1?",
   "context": "Path A is faster to ship but less extensible. Path B takes longer but supports plugin-style growth. Existing deadline is 2 weeks.",
   "options": [
-    { "title": "Path A (ship fast)", "description": "Lowest scope, revisit architecture later" },
+    { "title": "Path A (ship fast)", "description": "Lowest scope, revisit architecture later", "recommended": true },
     { "title": "Path B (extensible)", "description": "Higher initial effort, cleaner long-term composition" }
   ],
   "allowMultiple": false

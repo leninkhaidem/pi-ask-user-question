@@ -38,6 +38,7 @@ import {
 interface QuestionOption {
    title: string;
    description?: string;
+   recommended?: boolean;
 }
 
 type OptionInput = string | QuestionOption;
@@ -109,12 +110,23 @@ function normalizeOptions(raw: OptionInput[]): QuestionOption[] {
       .map((o) => ({
          title: unescapeNewlines(o.title),
          description: o.description ? unescapeNewlines(o.description) : undefined,
+         recommended: typeof o.recommended === "boolean" ? o.recommended : undefined,
       }));
 }
 
 /** Strip freeform action labels from user-supplied options; the UI always adds its own action row. */
 function deduplicateFreeform(options: QuestionOption[]): QuestionOption[] {
    return options.filter((o) => !/^type\s+(my\s+own|something)\.?$/i.test(o.title.trim()));
+}
+
+function validateRecommendedOptions(options: QuestionOption[]): string | null {
+   const count = options.filter((o) => o.recommended === true).length;
+   if (count <= 1) return null;
+   return `multiple options are marked recommended (${count}). Set recommended: true on at most one option and retry.`;
+}
+
+function formatOptionTitle(option: QuestionOption): string {
+   return option.recommended === true ? `${option.title} [recommended]` : option.title;
 }
 
 function formatResponseSummary(r: AskResponse): string {
@@ -127,7 +139,7 @@ function formatOptionsForPlainText(options: QuestionOption[]): string {
    return options
       .map((o, i) => {
          const desc = o.description ? ` — ${o.description}` : "";
-         return `${i + 1}. ${o.title}${desc}`;
+         return `${i + 1}. ${formatOptionTitle(o)}${desc}`;
       })
       .join("\n");
 }
@@ -551,13 +563,15 @@ class AskComponent implements Component {
             const titleText = isSelected
                ? theme.fg("accent", theme.bold(opt.title))
                : theme.fg("text", opt.title);
-            const line = `${pointer} ${theme.fg("dim", num)} ${checkbox} ${titleText}`;
+            const recommendedText = opt.recommended ? theme.fg("dim", " [recommended]") : "";
+            const line = `${pointer} ${theme.fg("dim", num)} ${checkbox} ${titleText}${recommendedText}`;
             lines.push(wrapInBorder(line, innerWidth, borderColor));
          } else {
             const titleText = isSelected
                ? theme.fg("accent", theme.bold(opt.title))
                : theme.fg("text", opt.title);
-            const line = `${pointer} ${theme.fg("dim", num)} ${titleText}`;
+            const recommendedText = opt.recommended ? theme.fg("dim", " [recommended]") : "";
+            const line = `${pointer} ${theme.fg("dim", num)} ${titleText}${recommendedText}`;
             lines.push(wrapInBorder(line, innerWidth, borderColor));
          }
 
@@ -628,16 +642,16 @@ export default function (pi: ExtensionAPI) {
       name: "ask_user",
       label: "Ask User",
       description:
-         "Ask the user a question with optional multiple-choice answers. Use this to gather information interactively. Ask exactly one focused question per call. Before calling, gather context with tools (read/web/ref) and write a visible explanation in your response text. Then pass a SHORT focused summary via the context field (target ≤6 lines / ≤600 chars; hard cap ~16 lines / 1200 chars). Long explanations, findings, or reasoning MUST appear in your visible response text (not only in thinking blocks) immediately before this call — NOT inside `context`. The panel is bottom-anchored and a tall `context` will overflow the terminal and lock scrolling.",
+         "Ask the user one focused question with optional multiple-choice answers. Gather context first, keep the visible explanation in chat, and use a short `context` summary. Prefer 2–5 options for finite choices. If you want to recommend one option, set `recommended: true` on at most one option instead of putting the recommendation in `context` or `description`.",
       promptSnippet:
          "Ask the user one focused question with optional multiple-choice answers to gather information interactively",
       promptGuidelines: [
-         "Before calling ask_user, gather context with tools (read/web/ref) and pass a short summary via the context field.",
-         "Keep `context` to a brief focused summary: target ≤6 lines / ≤600 chars. The hard cap is ~16 lines / 1200 chars — calls exceeding it are rejected with an error; retry with shorter context.",
-         "Put long explanations, findings, trade-off discussions, or reasoning in your visible response text (the text the user reads in the chat) BEFORE calling ask_user — not only in thinking/reasoning blocks and not inside the `context` parameter. The panel is for the decision, not for the explanation.",
-         "Use ask_user when the user's intent is ambiguous, when a decision requires explicit user input, or when multiple valid options exist.",
+         "Before calling ask_user, gather context with tools (read/web/ref) and pass only a short summary via the context field.",
+         "Keep `context` brief: target ≤6 lines / ≤600 chars. The hard cap is ~16 lines / 1200 chars; retry with shorter context if needed.",
+         "Put long explanations, findings, and trade-off analysis in your visible response text before calling ask_user, not only in thinking blocks and not inside `context`.",
+         "For finite choices, use 2–5 options when possible.",
+         "If you want one agent recommendation, mark at most one option with `recommended: true` and keep the recommendation inline.",
          "Ask exactly one focused question per ask_user call.",
-         "Do not combine multiple numbered, multipart, or unrelated questions into one ask_user prompt.",
       ],
       parameters: Type.Object({
          question: Type.String({ description: "The question to ask the user" }),
@@ -655,6 +669,9 @@ export default function (pi: ExtensionAPI) {
                      title: Type.String({ description: "Short title for this option" }),
                      description: Type.Optional(
                         Type.String({ description: "Longer description explaining this option" }),
+                     ),
+                     recommended: Type.Optional(
+                        Type.Boolean({ description: "Mark this option as the single recommended choice" }),
                      ),
                   }),
                ]),
@@ -701,6 +718,22 @@ export default function (pi: ExtensionAPI) {
          // timeout is accepted for backward compat but intentionally ignored — ask_user always waits indefinitely.
          // allowFreeform is stripped in prepareArguments; freeform input is always enabled.
          const options = deduplicateFreeform(normalizeOptions(rawOptions));
+         const recommendedError = validateRecommendedOptions(options);
+         if (recommendedError) {
+            return {
+               content: [{ type: "text", text: recommendedError }],
+               isError: true,
+               details: {
+                  question,
+                  context: context?.trim() ? unescapeNewlines(context.trim()) : undefined,
+                  options,
+                  response: null,
+                  cancelled: false,
+                  error: recommendedError,
+               } as AskToolDetails & { error: string },
+            };
+         }
+
          const normalizedContext = context?.trim()
             ? unescapeNewlines(context.trim())
             : undefined;
@@ -795,7 +828,17 @@ export default function (pi: ExtensionAPI) {
                   const trimmed = answer?.trim();
                   result = trimmed ? { kind: "freeform", text: trimmed } : null;
                } else {
-                  const selectOptions = [...options.map((o) => o.title), FREEFORM_ACTION_LABEL];
+                  const fallbackOptions = options.map((option, index) => ({
+                     label: `${index + 1}. ${formatOptionTitle(option)}`,
+                     rawTitle: option.title,
+                  }));
+                  const labelToRawTitle = new Map(
+                     fallbackOptions.map(({ label, rawTitle }) => [label, rawTitle] as const),
+                  );
+                  const selectOptions = [
+                     ...fallbackOptions.map(({ label }) => label),
+                     FREEFORM_ACTION_LABEL,
+                  ];
                   const selected = (await ctx.ui.select(prompt, selectOptions)) as
                      | string
                      | undefined;
@@ -806,7 +849,10 @@ export default function (pi: ExtensionAPI) {
                      const trimmed = answer?.trim();
                      result = trimmed ? { kind: "freeform", text: trimmed } : null;
                   } else {
-                     result = { kind: "selection", selections: [selected] };
+                     const rawSelection = labelToRawTitle.get(selected);
+                     if (rawSelection !== undefined) {
+                        result = { kind: "selection", selections: [rawSelection] };
+                     }
                   }
                }
             }
@@ -854,7 +900,9 @@ export default function (pi: ExtensionAPI) {
          text += theme.fg("muted", q);
          if (rawOpts.length > 0) {
             const labels = rawOpts.map((o: unknown) =>
-               typeof o === "string" ? o : (o as QuestionOption)?.title ?? "",
+               typeof o === "string"
+                  ? o
+                  : formatOptionTitle(o as QuestionOption),
             );
             text += "\n" + theme.fg("dim", `  ${rawOpts.length} option(s): ${labels.join(", ")}`);
          }
@@ -901,7 +949,8 @@ export default function (pi: ExtensionAPI) {
                for (const opt of details.options) {
                   const desc = opt.description ? ` — ${opt.description}` : "";
                   const marker = selectedSet.has(opt.title) ? theme.fg("success", "●") : theme.fg("dim", "○");
-                  text += `\n  ${marker} ${theme.fg("dim", opt.title)}${theme.fg("dim", desc)}`;
+                  const title = formatOptionTitle(opt);
+                  text += `\n  ${marker} ${theme.fg("dim", title)}${theme.fg("dim", desc)}`;
                }
                if (response.comment) {
                   text += `\n${theme.fg("dim", "Comment:")} ${theme.fg("dim", response.comment)}`;
