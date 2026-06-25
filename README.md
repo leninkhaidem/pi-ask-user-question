@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/pi-ask-user-question-banner.svg" alt="pi-ask-user-question — bottom-anchored questions for pi-coding-agent" width="100%">
+  <img src=".github/assets/pi-ask-user-question-ascii-banner.svg" alt="pi-ask-user-question — bottom-anchored questions for pi-coding-agent" width="100%">
 </p>
 
 # pi-ask-user-question
