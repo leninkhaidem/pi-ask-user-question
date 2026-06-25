@@ -68,19 +68,21 @@ ask_user
 |-----------|------|---------|-------------|
 | `question` | `string` | *required* | The question to ask the user |
 | `context` | `string?` | — | Relevant context (rendered as markdown) |
-| `options` | `(string \| {title, description?})[]?` | `[]` | Multiple-choice options |
+| `options` | `(string \| {title, description?, recommended?})[]?` | `[]` | Multiple-choice options |
 | `allowMultiple` | `boolean?` | `false` | Enable multi-select mode |
 | `allowComment` | `boolean?` | `false` | Reserved for optional comment collection |
 | `timeout` | `number?` | ignored | Deprecated; `ask_user` waits indefinitely |
 
 ## Example usage
 
+Option objects may also set `recommended: true` to flag one preferred choice inline.
+
 ```json
 {
   "question": "Which deploy target for the first release?",
   "context": "We have staging and production environments. Staging has relaxed rate limits, production has strict SLAs.",
   "options": [
-    { "title": "Staging first", "description": "Lower risk, validate before production" },
+    { "title": "Staging first", "description": "Lower risk, validate before production", "recommended": true },
     { "title": "Direct to production", "description": "Faster but riskier" }
   ]
 }
